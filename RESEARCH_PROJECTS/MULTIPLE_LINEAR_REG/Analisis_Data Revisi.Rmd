@@ -1,0 +1,299 @@
+---
+title: "TUGAS AKHIR ANALISIS REGRESI"
+author: "Kelompok 3"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(ggridges)
+library(treemap)
+library(treemapify)
+library(GGally)
+library(plotly)
+library(ggplot2)
+library(readxl)
+library(car)
+library(dplyr)
+library(randtests)
+library(lmtest)
+library(olsrr)
+library(corrplot)
+library(nortest)
+library(MASS)
+```
+
+##Data
+
+```{r}
+library(readxl)
+umk <- read_xlsx("C:/Users/Shabrina/Storage/University/Semester 4/Analisis Regresi/Projek/DATA1234.xlsx")
+umk
+```
+
+```{r}
+Y <- umk$`Upah Minimum (Juta Rupiah)`
+X1 <- umk$`KHL Per Orang (Juta Rupiah)`
+X2 <-umk$`Angka Inflasi (Persen)`
+X3<-umk$`Tingkat Pengangguran Terbuka (Persen)`
+X4 <- umk$`Pertumbuhan Ekonomi (Persen)`
+X5<-umk$`Total APBD (Miliar)`
+X6 <-umk$`Penanaman Modal Dalam Negeri (Triliun)`
+X7 <- umk$`Tingkat Partisipasi Angkatan Kerja (Persen)`
+X8<- umk$`Indeks Harga Konsumen (poin)`
+X9 <- umk$`PDRB (Miliar)`
+X10 <-umk$`Pendapatan Perkapita`
+
+umk1 <- data.frame(Y,X1,X2,X3,X4,X5,X6,X7,X8,X9,X10)
+umk1
+umk1[] <- lapply(umk1, as.numeric)
+head(umk1)
+str(umk1)
+```
+
+##Model Awal
+
+```{r}
+model1<- lm(Y~., data=umk1)
+summary(model1)
+```
+
+Didapatkan model regresi sebagai berikut: $$
+/hat Y=-2.750+6.377X_1+0.213X_2-0.189X_3-0.280X_4+0.00003X_5+0.0197X_6-0.0106X_7+0.224X_8+0.00002X_9+0.0036_{10}
+$$ Hasil tersebut belum bisa dipastikan menjadi model terbaik karena belum melalui serangkaian uji, sehingga diperlukan pengecekan nilai korelasi, multikolinearitas antarvariabel X dengan pembandingan nilai VIF yang lebih dari 10, dan kriteria model terbaik.
+
+##Eksplorasi Data
+
+```{r}
+ggpairs(umk1,
+        upper = list(continuous = wrap('cor', size = 2)),
+        title = "Matriks Scatterplot dan Korelasi")
+```
+Pada matriks diatas tanda *(bintang) artinya terdapat nilai korelasi antara 2 peubah. Pada matriks tersebut, peubah-peubah yang memiliki korelasi terhadap respon Y adalah X1, X5, X6, X7, X8, X10. Sedangkan peubah X2, X3, X4,dan X9 memiliki korelasi yang kecil dan telah terwakili oleh variabel X yang lainnya sehingga dapat dihilangkan untuk kemudian diperiksa model dan multikolinearitasnya.
+
+### Model setelah beberapa peubah x dihilangkan
+
+```{r}
+model2<- lm(Y~X1+X5+X6+X7+X8+X10, data=umk1)
+summary(model2)
+```
+## Pengecekan Multikolinearitas
+
+```{r}
+vif(model2)
+```
+Berdasarkan Uji VIF diatas, nilai VIF dari tiap peubah penjelas (X1,X5,X6,X7,X8,X10) kurang dari 10. Hal ini, menandakan tidak terdapat multikolinearitas antar peubah X
+
+## Eksplorasi Kondisi Gauss Markov
+
+### Plot Sisaan vs Y duga
+```{r}
+plot(model2,1)
+```
+
+1. Sisaan menyebar di sekitar 0, sehingga nilai harapan galat sama dengan nol  
+2. Lebar pita sama untuk setiap nilai dugaan, sehingga ragam homogen  
+
+### Plot Sisaan vs Urutan
+```{r}
+plot(x = 1:dim(umk1)[1],
+     y = model2$residuals,
+     type = 'b', 
+     ylab = "Residuals",
+     xlab = "Observation")
+```
+Tebaran tidak berpola, sehingga sisaan saling bebas, dan model pas
+
+### Normalitas Sisaan dengan QQ-Plot
+```{r}
+plot(model2,2)
+```
+Titik-titik data pada QQ-plot cukup dekat dengan garis. Hal ini menunjukkan bahwa distribusi sisaan mirip dengan Sebaran normal.
+
+## Uji Formal Kondisi Gauss-Markov
+
+### 1. Nilai harapan sisaan sama dengan nol
+
+H0: Nilai harapan sisaan sama dengan nol  
+H1: Nilai harapan sisaan tidak sama dengan nol
+```{r}
+t.test(model2$residuals,mu = 0,conf.level = 0.95)
+```
+Uji t.tes tersebut menunjukkan hasil p-value > alpha = 0.05, maka tak tolak H0, sehingga nilai harapan sisaan sama dengan nol pada taraf nyata 5%. Asumsi terpenuhi.
+
+### 2. Ragam Sisaan Homogen
+
+H0:ragam sisan homogen 
+H1:ragam siaan tidak homogen
+```{r}
+bptest(model2)
+```
+Uji ini sering disebut dengan uji homokesdasitas. Karena p-value = 0.638 > alpha = 0.05, maka tak tolak H0, ragam sisaan homogen pada taraf nyata 5%. Asumsi terpenuhi.
+
+
+### 3. Sisaan Saling Bebas
+
+H0:sisaan saling bebas/tidak ada autokorelasi  
+H1:sisaan tidak saling bebas/ada autokorelasi
+```{r}
+dwtest(model2)
+```
+Uji ini sering disebut dengan uji autokorelasi yang dilakukan dengan Durbin watson. Berdasarakan Uji Durbin-Watson yang dilakukan, menghasilkan nilai p-value = 0.3608  > alpha = 0.05, maka tak tolak H0, sisaan saling bebas pada taraf nyata 5%, sehingga asumsi terpenuhi.
+
+### Uji Formal Normalitas Sisaan
+
+H0:sisaan menyebar Normal
+H1:sisaan tidak menyebar Normal 
+```{r}
+shapiro.test(model2$residuals)
+```
+Berdasarkan Uji Shapiro-test yang dilakukan menghasilkan nilai p-value = 0.8346 > alpha = 0.05, maka tak tolak H0, sehingga sisaan menyebar normal pada taraf nyata 5%.
+
+## Pencilan, Titik Leverage, dan Amatan Berpengaruh
+
+### Perhitungan ri, ci, Hi, DFFITSi
+```{r}
+index <- c(1:27)
+ri <- studres(model2)
+ci <- cooks.distance(model2)
+DFFITSi <- dffits(model2)
+hi <- ols_hadi(model2)
+hii <- hatvalues(model2)
+hasil <- data.frame(index,ri,ci,DFFITSi,hi,hii); round(hasil,4)
+```
+
+### Plot ri, ci, Hi, DFFITSi, dan Potential Residual
+
+```{r}
+#Plot ri
+ggplot(hasil) +
+  geom_point(aes(y = `ri`, x = `index`),
+             color="blue",size=5) +
+  ylab("ri") +
+  xlab("index") +
+  ggtitle("Plot ri") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#Plot ci
+ggplot(hasil) +
+  geom_point(aes(y = `ci`, x = `index`),
+             color="red",size=4) +
+  ylab("ci") +
+  xlab("index") +
+  ggtitle("Plot ci") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#plot DFFITSi
+ggplot(hasil) +
+  geom_point(aes(y = `DFFITSi`, x = `index`),
+             color="green",size=3) +
+  ylab("DFFITSi") +
+  xlab("index") +
+  ggtitle("Plot DFFITSi") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#plot Hi
+ggplot(hasil) +
+  geom_point(aes(y = `hadi`, x = `index`),
+             color="navyblue",size=2.5) +
+  ylab("Hi") +
+  xlab("index") +
+  ggtitle("Plot Hi") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#plot Potensial residual
+ggplot(hasil) +
+  geom_point(aes(y = `potential`, x = `residual`),
+             color="yellow",size=5.5) +
+  ylab("potential") +
+  xlab("residual") +
+  ggtitle("P-R Plot") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+### Pencilan atau Outlier
+
+```{r}
+for (i in 1:dim(hasil)[1]){
+  absri <- abs(hasil$ri)
+  pencilan <- which(absri > 2)
+}
+pencilan
+```
+Berdasarkan data tersebut, terdapat dua titik observasi yang terdeteksi sebagai sebuah pencilan, yaitu amatan ke-14 dengan nilai rinya 2.4734	dan amatan ke-27 dengan nilai rinya -2.0496.
+
+### Titik Leverage
+
+```{r}
+titik_leverage <- vector("list", dim(hasil)[1])
+for (i in 1:dim(hasil)[1]) {
+  cutoff <- 2 * 7 / 27
+  titik_leverage[[i]] <- which(hii > cutoff)
+}
+leverages <- unlist(titik_leverage)
+titik_leverage <- sort(unique(leverages))
+titik_leverage
+```
+Berdasarkan data tersebut, terdapat dua titik observasi yang termasuk sebagai titik leverage pada data, yaitu amatan ke-18 dengan nilai hii 0.7369 dan amatan ke-22 dengan nilai hii 0.1580.
+
+### Amatan Berpengaruh
+
+```{r}
+amatan_berpengaruh <- vector("list", dim(hasil)[1])
+for (i in 1:dim(hasil)[1]) {
+  cutoff <- 2 * sqrt((6 / 22))
+  amatan_berpengaruh[[i]] <- which(abs(DFFITSi) > cutoff)
+}
+berpengaruh <- unlist(amatan_berpengaruh)
+amatan_berpengaruh <- sort(unique(berpengaruh))
+amatan_berpengaruh
+```
+Berdasarkan data tersebut menunjukan bahwa amatan ke-16 dan ke-21 termasuk sebagai amatan berpengaruh dengan nilai DFFITSI-nya -1.5018 dan -1.7359.
+
+```{r}
+#gambaran amatan berpengaruh dengan pencilan dan laverage
+ols_plot_resid_lev(model2)
+
+data <- dt[-c(14, 21),]
+
+model_berpengaruh <-lm(Y~X1+X5+X6+X7+X8+X10, data=umk1)
+
+summary(model2)$r.squared
+summary(model_berpengaruh)$r.squared
+```
+
+```{r}
+#pembentukan data baru tanpa amatan 14 dan 21
+umk2 <- subset(umk1, select = -c(X1+X5+X6+X7+X8+X10))
+umk2 <- umk2[-c(14, 21),]
+#pemodelan rlb terbaru
+model3 <- lm(Y~.,data= umk2)
+summary(model3)
+anova(model3)
+```
+```{r}
+#Forward
+step(model3,direction="forward")
+```
+```{r}
+#Backward
+step(model3,direction="backward")
+```
+```{r}
+step(model3,direction="both")
+```
+```{r}
+#Model Terbaik
+best <- ols_step_best_subset(model3)
+best
+```
+ 
+ 
