@@ -1,0 +1,158 @@
+---
+title: "ringkas_bayes"
+author: "Raihan Sabillah Adisecha"
+date: "2025-05-20"
+output: rmdformats::readthedown
+---
+
+# Library
+
+```{r}
+#```{r eval=FALSE, include=FALSE}
+library(tidyverse)
+library(skimr)
+library(DataExplorer)
+library(bayesrules)
+library(rstanarm)
+library(parameters)
+library(bayesplot)
+library(ggplot2)
+library(rstanarm)
+library(brms)
+library(car)
+library(corrplot)
+library(loo)
+library(readxl)
+```
+
+# Import Data
+
+```{r}
+# baca data dari clipboard
+#df <- read.table(file = "clipboard", header = TRUE)
+#df <- read.delim(file = "clipboard", header = TRUE)
+#df <- read_excel("D:\\Drive Raihan\\My Drive\\Akademik\\Semester 6\\Bayes\\Bayes Proyek\\data.xlsx", sheet = "Sheet1") # Ganti dengan nama file dan sheet yang sesuai
+# 1. Tentukan URL raw ke file Excel di GitHub
+url <- "https://raw.githubusercontent.com/raihanadisecha/getfile/main/data_bayes.xlsx"
+tmp <- tempfile(fileext = ".xlsx")
+download.file(url, destfile = tmp, mode = "wb")
+df <- read_excel(tmp, sheet = 1)
+unlink(tmp)
+print(df)
+```
+
+# Penskalaan
+
+```{r}
+df_scaled <- df
+df_scaled[, -1] <- scale(df[, -1])  # Skala semua variabel kecuali target
+print(df_scaled)
+```
+
+# Rename Kolom
+
+```{r}
+predictors <- setdiff(names(df_scaled), "mati")
+col_names <- c("Y", paste0("X", 1:(length(predictors))))
+names(df_scaled) <- col_names
+names(df)
+names(df_scaled)
+```
+
+# Korelasi
+
+```{r}
+# buat plot korelasi
+library(corrplot)
+# Menghitung korelasi antar variabel
+correlation_matrix <- cor(df_scaled, use = "complete.obs")
+# Plot korelasi
+corrplot(correlation_matrix, method = "color", tl.col = "black", addCoef.col = "white")
+correlation_matrix[1,]
+```
+
+# Set Prior
+
+```{r}
+# Nama variabel Y dan semua prediktor
+response_var <- "Y"
+predictor_vars <- setdiff(names(df_scaled), response_var)
+
+# Hitung korelasi Y terhadap masing-masing X
+correlations <- sapply(predictor_vars, function(x) {
+  cor(df_scaled[[response_var]], df_scaled[[x]])
+})
+
+# Inisiasi prior sebagai vector kosong
+prior_list <- set_prior("normal(0, 100)", class = "Intercept")
+
+# Tambahkan prior spesifik untuk masing-masing koefisien
+for (i in seq_along(predictor_vars)) {
+  coef_name <- predictor_vars[i]
+  mean_corr <- round(correlations[i], 3)
+  prior_list <- c(prior_list, set_prior(
+    paste0("normal(", mean_corr, ", 1)"),
+    class = "b", coef = coef_name
+  ))
+}
+
+# Lihat prior_list
+prior_list
+```
+
+# Poisson Bayes
+
+```{r}
+mod_brm <- brms::brm(
+  formula = Y ~ .,
+  data = df_scaled,
+  family = poisson(link = "log"),
+  prior = prior_list,
+  seed = 123
+)
+summary(mod_brm)
+```
+
+X1 = RLS Perempuan (-)
+X2 = persentase ibu kekurangan gizi yang mendapat bantuan pemerintah (-)
+X3 = persentase nikah dini (+)
+X4 = persentase persalinan dengan tenaga medis (-)
+X5 = jumlah puskesmas (-)
+X6 = persentase ibu hamil yang menderita sifilis (+)
+X7 = persentase penduduk miskin (+)
+X8 = persentase kab/kota menerapkan kawasan tanpa rokok (-)
+X9 = persentase ibu hamil mendapatkan imunisasi tetanus difteri (-)
+X10 = persentase ibu hamil meminum tablet tambah darah minimal 90 tablet (-)
+
+# Akurasi
+
+```{r}
+pp_check(mod_brm, type = "dens_overlay") # Posterior Predictive Checks (PPC), Mengevaluasi apakah model dapat mereproduksi karakteristik data aktual
+```
+
+```{r}
+bayesplot::mcmc_trace(as.array(mod_brm), facet_args = list(dir = "v"))
+```
+
+```{r}
+loo_brm <- loo(mod_brm, moment_match = TRUE)
+
+print(loo_brm)
+pareto_k_ids(loo_brm)
+```
+
+```{r}
+waic(mod_brm)
+```
+
+```{r}
+bayes_R2(mod_brm)
+```
+
+```{r}
+fitted_values <- fitted(mod_brm)[, "Estimate"]
+actual <- df_scaled$Y
+mse <- mean((actual - fitted_values)^2)
+mse
+```
+
